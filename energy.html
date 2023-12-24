@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>...</title>
+<style>
+svg {
+  .domain {
+    stroke: #888;
+  }
+  .tick line {
+    stroke: #555;
+  }
+
+  .tick text {
+    fill: #888;
+  }
+}
+
+.tooltip {
+  min-width: 40px;
+  background: #000;
+  color: #fff;
+  font-size: 0.65em;
+  font-family: arial;
+  line-height: 15px;
+  text-align: center;
+  padding: 0 2px;
+  position: absolute;
+  display: none;
+}
+</style>
+</head>
+<body>
+<svg></svg>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+const amt = Intl.NumberFormat('en-PH', {style: 'currency', currency: 'php'});
+const margin = { top: 50, right: 50, bottom: 50, left: 50 };
+const width = window.innerWidth - margin.left - margin.right;
+const height = window.innerHeight - margin.left - margin.right;
+const datefmt = (d) => new Date(d).toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'numeric'});
+
+const f = d3.formatLocale({
+  currency: ['\u20b1','']
+}).format('$.2s');
+
+svg = d3.select('svg')
+        .attr('width', width).attr('height', height)
+        .style('display','block').style('margin','auto');
+
+const g1 = svg.append('g');
+const g2 = svg.append('g');
+const g3 = svg.append('g').style('display','none');
+
+const ce = g3.append('circle')
+             .attr('r', 3)
+             .attr('fill', 'red')
+             .attr('pointer-events', 'none')
+
+const lx = g3.append('line')
+             .attr('style', 'stroke: red; stroke-width: 1; stroke-dasharray: 2;')
+             .attr('x1', margin.left).attr('x2', width-margin.right)
+
+const ly = g3.append('line')
+             .attr('style', 'stroke: red; stroke-width: 1; stroke-dasharray: 2;')
+             .attr('y1', margin.top).attr('y2', height-margin.bottom)
+
+const ttl = d3.select('body').append('div').classed('tooltip',true)
+const ttr = d3.select('body').append('div').classed('tooltip',true)
+const ttb = d3.select('body').append('div').classed('tooltip',true)
+
+d3.json('energy.json').then(data => {
+
+  data = data.map( d => {
+           return {
+             KWH: +d.KWH,
+             Amount: +d.Amount,
+             Period: Date.parse(d.Period.replace(/ /g,'T'))
+           }
+         });
+
+  const x = d3.scaleTime( d3.extent(data, d => d.Period ), [ margin.left, width - margin.right ] );
+  const y = d3.scaleLinear( d3.extent(data, d => d.KWH ), [ height - margin.bottom, margin.top ] );
+  const z = d3.scaleLinear( d3.extent(data, d => d.Amount ), [ height - margin.bottom, margin.top ] );
+
+  const l = d3.line().x(d => x(d.Period)).y(d => y(d.KWH));
+  const m = d3.line().x(d => x(d.Period)).y(d => z(d.Amount));
+
+  g1.append('g')
+     .attr('transform',`translate(0, ${height - margin.bottom})`)
+     .call(d3.axisBottom(x))
+
+  g1.append('g')
+     .attr('transform', `translate(${margin.left}, 0)`)
+     .call(d3.axisLeft(y).ticks(20))
+     .append('text')
+     .text('KWH Used')
+     .style('font-weight', 100)
+     .style('font-family', 'arial')
+     .style('font-size', '1.4em')
+     .attr('fill', 'orange')
+     .attr('transform',`translate(-30,${height-150}) rotate(-90)`)
+
+  g1.append('g')
+     .attr('transform', `translate(${width - margin.right}, 0)`)
+     .call(d3.axisRight(z).tickFormat(f).ticks(25))
+     .append('text')
+     .text('Amount Billed')
+     .style('font-weight', 100)
+     .style('font-family', 'arial')
+     .style('font-size', '1.4em')
+     .attr('fill', 'green')
+     .attr('transform',`translate(40,50) rotate(90)`)
+
+  g2.append('path')
+     .attr('fill','none')
+     .attr('stroke', 'orange')
+     .attr('stroke-width', 1.5)
+     .attr('d', l(data))
+
+  g2.append('path')
+     .attr('fill','none')
+     .attr('stroke', 'green')
+     .attr('stroke-width', 1)
+     .attr('d', m(data))
+
+  svg.on('click', e=> {
+    console.log(x.invert(e.offsetX), y.invert(e.offsetY).toFixed(2))
+  })
+
+  svg.on('mousemove', e=>{
+    var pos = { x:e.offsetX, y:e.offsetY,
+                t:margin.top, r:margin.right,
+                b:margin.bottom, l:margin.left,
+                w:width-margin.right, h:height-margin.bottom };
+
+    g3.style('display','none')
+    ttl.style('display','none')
+    ttr.style('display','none')
+    ttb.style('display','none')
+
+    if ( pos.t < pos.y && pos.l < pos.x && pos.h > pos.y && pos.w > pos.x ) {
+      g3.transition().duration(200).style('display','block')
+      ttl.text(y.invert(e.offsetY).toFixed(2)).style('top', `${pos.y}px`).style('right', `${pos.w+pos.l}px`).transition().duration(100).style('display','block')
+      ttr.text(amt.format(z.invert(e.offsetY))).style('top', `${pos.y}px`).style('left', `${pos.w+pos.l}px`).transition().duration(100).style('display','block')
+      ttb.text(datefmt(x.invert(e.offsetX))).style('top', `${pos.h+8}px`).style('left', `${pos.x+24}px`).transition().duration(100).style('display','block')
+    }
+
+    ce.attr('cx', e.offsetX).attr('cy', e.offsetY);
+    lx.attr('y1', e.offsetY).attr('y2', e.offsetY);
+    ly.attr('x1', e.offsetX).attr('x2', e.offsetX);
+  })
+
+  svg.on('mouseleave', e=>{
+    g3.transition().duration(1000).style('display','none')
+    ttl.transition().duration(1000).style('display','none')
+    ttr.transition().duration(2000).style('display','none')
+    ttb.transition().duration(3000).style('display','none')
+  })
+})
+</script>
+</body>
+</html>
