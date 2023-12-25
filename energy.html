@@ -11,10 +11,15 @@ svg {
   .tick line {
     stroke: #555;
   }
-
   .tick text {
     fill: #888;
   }
+}
+
+.linelrb {
+  stroke: red;
+  stroke-width: 1;
+  stroke-dasharray: 2;
 }
 
 .tooltip {
@@ -27,7 +32,6 @@ svg {
   text-align: center;
   padding: 0 2px;
   position: absolute;
-  display: none;
 }
 </style>
 </head>
@@ -35,7 +39,7 @@ svg {
 <svg></svg>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script>
-const amt = Intl.NumberFormat('en-PH', {style: 'currency', currency: 'php'});
+const peso = Intl.NumberFormat('en-PH', {style: 'currency', currency: 'php'}).format;
 const margin = { top: 50, right: 50, bottom: 50, left: 50 };
 const width = window.innerWidth - margin.left - margin.right;
 const height = window.innerHeight - margin.left - margin.right;
@@ -53,32 +57,34 @@ const g1 = svg.append('g');
 const g2 = svg.append('g');
 const g3 = svg.append('g').style('display','none');
 
-const ce = g3.append('circle')
+const c1 = g3.append('circle')
              .attr('r', 3)
              .attr('fill', 'red')
-             .attr('pointer-events', 'none')
+             .attr('pointer-events', 'none');
+const c2 = g3.append('circle')
+             .attr('r', 3)
+             .attr('fill', 'red')
+             .attr('pointer-events', 'none');
 
-const lx = g3.append('line')
-             .attr('style', 'stroke: red; stroke-width: 1; stroke-dasharray: 2;')
-             .attr('x1', margin.left).attr('x2', width-margin.right)
+const lr = g3.append('line').classed('linelrb', true);
+const ll = g3.append('line').classed('linelrb', true);
+const lb = g3.append('line').classed('linelrb', true);
 
-const ly = g3.append('line')
-             .attr('style', 'stroke: red; stroke-width: 1; stroke-dasharray: 2;')
-             .attr('y1', margin.top).attr('y2', height-margin.bottom)
+const tt = d3.select('body').append('div').style('display','none');
+const tl = tt.append('div').classed('tooltip',true)
+const tr = tt.append('div').classed('tooltip',true)
+const tb = tt.append('div').classed('tooltip',true)
+const tx = tt.append('div').classed('tooltip',true);
 
-const ttl = d3.select('body').append('div').classed('tooltip',true)
-const ttr = d3.select('body').append('div').classed('tooltip',true)
-const ttb = d3.select('body').append('div').classed('tooltip',true)
+d3.json('energy.json').then(datz=>{
 
-d3.json('energy.json').then(data => {
-
-  data = data.map( d => {
-           return {
-             KWH: +d.KWH,
-             Amount: +d.Amount,
-             Period: Date.parse(d.Period.replace(/ /g,'T'))
-           }
-         });
+  const data = datz.map(i=> {
+    return {
+      KWH: +i.KWH,
+      Amount: +i.Amount,
+      Period: Date.parse(i.Period.replace(/ /g,'T'))
+    }
+  });  
 
   const x = d3.scaleTime( d3.extent(data, d => d.Period ), [ margin.left, width - margin.right ] );
   const y = d3.scaleLinear( d3.extent(data, d => d.KWH ), [ height - margin.bottom, margin.top ] );
@@ -125,38 +131,45 @@ d3.json('energy.json').then(data => {
      .attr('stroke-width', 1)
      .attr('d', m(data))
 
-  svg.on('click', e=> {
-    console.log(x.invert(e.offsetX), y.invert(e.offsetY).toFixed(2))
-  })
-
   svg.on('mousemove', e=>{
-    var pos = { x:e.offsetX, y:e.offsetY,
+    let pos = { x:e.offsetX, y:e.offsetY,
                 t:margin.top, r:margin.right,
                 b:margin.bottom, l:margin.left,
-                w:width-margin.right, h:height-margin.bottom };
+                w:width-margin.right, h:height-margin.bottom
+              };
 
-    g3.style('display','none')
-    ttl.style('display','none')
-    ttr.style('display','none')
-    ttb.style('display','none')
+    let dd = data.filter(d =>d.Period>x.invert(pos.x)).pop() || [],
+        x1 = x(dd.Period),
+        y1 = y(dd.KWH),
+        z1 = z(dd.Amount);
 
-    if ( pos.t < pos.y && pos.l < pos.x && pos.h > pos.y && pos.w > pos.x ) {
-      g3.transition().duration(200).style('display','block')
-      ttl.text(y.invert(e.offsetY).toFixed(2)).style('top', `${pos.y}px`).style('right', `${pos.w+pos.l}px`).transition().duration(100).style('display','block')
-      ttr.text(amt.format(z.invert(e.offsetY))).style('top', `${pos.y}px`).style('left', `${pos.w+pos.l}px`).transition().duration(100).style('display','block')
-      ttb.text(datefmt(x.invert(e.offsetX))).style('top', `${pos.h+8}px`).style('left', `${pos.x+24}px`).transition().duration(100).style('display','block')
+    if ( !x1 ) return;
+
+    g3.transition().duration(200).style('display','block');
+    tt.transition().duration(300).style('display','block');
+
+    c1.attr('cx', x1).attr('cy', y1);
+    c2.attr('cx', x1).attr('cy', z1);
+    ll.attr('x1', pos.l).attr('x2', x1).attr('y1', y1).attr('y2', y1);
+    lr.attr('x1', pos.w).attr('x2', x1).attr('y1', z1).attr('y2', z1);
+    lb.attr('x1', x1).attr('x2', x1).attr('y1', pos.h).attr('y2', y1 < z1 ? y1 : z1);
+
+    tl.text(dd.KWH).style('top', `${y1}px`).style('right', `${pos.w+pos.l}px`);
+    tr.text(peso(dd.Amount)).style('top', `${z1}px`).style('left', `${pos.w+pos.l}px`);
+    tb.text(datefmt(dd.Period)).style('top', `${pos.h+8}px`).style('left', `${x1+25}px`);
+
+    tx.text('energy cost is expensive').attr('style',`top:${pos.h+pos.t}px; right:${pos.l*2}px;`)
+    tx.style('padding', '2px 10px')
+    tx.style('background', 'red')
+
+    if ( y1 < z1 ) {
+      tx.text('energy cost is cheap').style('background', 'green');
     }
-
-    ce.attr('cx', e.offsetX).attr('cy', e.offsetY);
-    lx.attr('y1', e.offsetY).attr('y2', e.offsetY);
-    ly.attr('x1', e.offsetX).attr('x2', e.offsetX);
   })
 
   svg.on('mouseleave', e=>{
     g3.transition().duration(1000).style('display','none')
-    ttl.transition().duration(1000).style('display','none')
-    ttr.transition().duration(2000).style('display','none')
-    ttb.transition().duration(3000).style('display','none')
+    tt.transition().duration(2000).style('display','none')
   })
 })
 </script>
